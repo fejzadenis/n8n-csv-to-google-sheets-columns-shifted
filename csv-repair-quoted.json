@@ -1,0 +1,46 @@
+{
+  "name": "CSV repair (quoted delimiters) before Sheets",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "b1",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node - mode: Run Once for All Items\n// input: one item { csv: \"<file contents as text>\" }\n// Output: one item per row, every row exactly header.length fields.\nconst DELIM = ';'; // ',' for comma-separated exports\nconst text = String($input.first().json.csv ?? '').replace(/^\\uFEFF/, '');\n\nfunction parseCSV(s, d) {\n  const rows = []; let row = []; let cur = ''; let q = false;\n  for (let i = 0; i < s.length; i++) {\n    const c = s[i];\n    if (q) {\n      if (c === '\"') { if (s[i + 1] === '\"') { cur += '\"'; i++; } else q = false; }\n      else cur += c;\n    } else if (c === '\"') q = true;\n    else if (c === d) { row.push(cur); cur = ''; }\n    else if (c === '\\n') { row.push(cur); rows.push(row); row = []; cur = ''; }\n    else if (c === '\\r') { /* skip CR, keep LF handling simple */ }\n    else cur += c;\n  }\n  row.push(cur); rows.push(row);\n  return rows.filter(r => !(r.length === 1 && r[0].trim() === ''));\n}\n\nconst rows = parseCSV(text, DELIM);\nif (!rows.length) return [];\nconst header = rows.shift().map((h, i) => h.trim() || 'unnamed_' + (i + 1));\nconst n = header.length;\nconst out = [];\nlet padded = 0, overflow = 0, exact = 0;\n\nfor (let i = 0; i < rows.length; i++) {\n  const c = rows[i].slice();\n  while (c.length > n && c[c.length - 1].trim() === '') c.pop();\n  if (c.length < n) { while (c.length < n) c.push(''); padded++; }\n  else if (c.length > n) { overflow++; while (c.length > n) c[n - 1] += ' ' + c.pop(); }\n  else exact++;\n  const o = { __source_line: i + 2 };\n  for (let j = 0; j < n; j++) o[header[j]] = (c[j] === undefined ? '' : String(c[j]).trim());\n  out.push(o);\n}\n\n// counts for the node output panel: padded / overflow / exact\nconsole.log(JSON.stringify({ rows: out.length, exact, padded, overflow, columns: n }));\nreturn out.map(r => ({ json: r }));"
+      },
+      "id": "b2",
+      "name": "Parse and repair CSV",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse and repair CSV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
